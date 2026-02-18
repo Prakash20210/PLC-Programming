@@ -74,8 +74,9 @@ IsFull := (ParkedCars >= MAX_SLOTS);
 FreeSlots := MAX_SLOTS - ParkedCars;
 
 (* 5) Barrier control *)
-(* Open entry gate only for incoming car when not full *)
-EntryGateCmd := EntrySensor AND NOT IsFull;
+(* Open entry gate for a present vehicle when not full,
+   including the transition scan that consumes the final slot. *)
+EntryGateCmd := EntrySensor AND ((NOT IsFull) OR EntryPulse);
 
 (* Open exit gate when car is present at exit sensor *)
 ExitGateCmd := ExitSensor;
