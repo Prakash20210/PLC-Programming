@@ -24,4 +24,12 @@ This repository now includes a ready-to-use Structured Text car parking control 
 - `Y2`: Full lamp
 - `Y3`: Available lamp
 
+### Configuration
+
+In `fuji_car_parking_program.st`, tune:
+
+- `MAX_SLOTS` (e.g., `50`)
+- `GATE_HOLD_TIME` (e.g., `T#3s`)
+
+Then map variables to your Fuji PLC device addresses (X/Y/M/D) in the programming software.
 You can adjust lot capacity by changing `MAX_SLOTS` in the ST program.
