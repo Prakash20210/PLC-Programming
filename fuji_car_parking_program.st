@@ -11,6 +11,11 @@
   Tune these settings for your site:
     MAX_SLOTS      : lot capacity
     GATE_HOLD_TIME : gate open time after a valid detection
+  - Opens entry barrier only when parking is not full.
+  - Opens exit barrier whenever a vehicle is detected at exit.
+  - Drives FULL lamp and exposes free slots.
+
+  Capacity can be changed using MAX_SLOTS.
 
   Suggested I/O mapping on Fuji PLC:
   Inputs
@@ -25,6 +30,12 @@
 
   Note:
   - Map BOOL/INT variables to Fuji device addresses (X/Y/M/D) in your project.
+    Y0 : Entry barrier open solenoid/motor command
+    Y1 : Exit barrier open solenoid/motor command
+    Y2 : Parking FULL indicator lamp
+    Y3 : Parking AVAILABLE indicator lamp
+
+  Internal registers / variables can be mapped to D/M as needed in Fuji Workbench.
 ***)
 
 PROGRAM CAR_PARKING
@@ -45,11 +56,27 @@ VAR
     AvailLamp    : BOOL;              (* Y3 *)
 
     (* ===== Internal process data ===== *)
+    (* Constants / settings *)
+    MAX_SLOTS : INT := 50;          (* Total parking capacity *)
+
+    (* Digital inputs *)
+    EntrySensor : BOOL;             (* X0 *)
+    ExitSensor  : BOOL;             (* X1 *)
+    ResetPB     : BOOL;             (* X2 *)
+
+    (* Digital outputs *)
+    EntryGateCmd : BOOL;            (* Y0 *)
+    ExitGateCmd  : BOOL;            (* Y1 *)
+    FullLamp     : BOOL;            (* Y2 *)
+    AvailLamp    : BOOL;            (* Y3 *)
+
+    (* Internal states *)
     ParkedCars : INT := 0;
     FreeSlots  : INT := 50;
     IsFull     : BOOL;
 
     (* Sensor edge / re-arm logic *)
+    (* Rising-edge helper bits *)
     PrevEntrySensor : BOOL := FALSE;
     PrevExitSensor  : BOOL := FALSE;
     EntryPulse      : BOOL;
@@ -69,6 +96,13 @@ EntryPulse := EntrySensor AND NOT PrevEntrySensor;
 ExitPulse  := ExitSensor  AND NOT PrevExitSensor;
 
 (* 2) Reset count when requested *)
+END_VAR
+
+(* 1) Edge detection so one car increments/decrements once per sensor event *)
+EntryPulse := EntrySensor AND NOT PrevEntrySensor;
+ExitPulse  := ExitSensor  AND NOT PrevExitSensor;
+
+(* 2) Reset logic *)
 IF ResetPB THEN
     ParkedCars := 0;
 END_IF;
@@ -130,6 +164,32 @@ FullLamp  := IsFull;
 AvailLamp := NOT IsFull;
 
 (* 8) Store previous scan inputs *)
+(* 3) Car count logic with range protection *)
+IF EntryPulse AND (ParkedCars < MAX_SLOTS) THEN
+    ParkedCars := ParkedCars + 1;
+END_IF;
+
+IF ExitPulse AND (ParkedCars > 0) THEN
+    ParkedCars := ParkedCars - 1;
+END_IF;
+
+(* 4) Derive status flags *)
+IsFull := (ParkedCars >= MAX_SLOTS);
+FreeSlots := MAX_SLOTS - ParkedCars;
+
+(* 5) Barrier control *)
+(* Open entry gate for a present vehicle when not full,
+   including the transition scan that consumes the final slot. *)
+EntryGateCmd := EntrySensor AND ((NOT IsFull) OR EntryPulse);
+
+(* Open exit gate when car is present at exit sensor *)
+ExitGateCmd := ExitSensor;
+
+(* 6) Indicators *)
+FullLamp  := IsFull;
+AvailLamp := NOT IsFull;
+
+(* 7) Store previous states for edge detection *)
 PrevEntrySensor := EntrySensor;
 PrevExitSensor  := ExitSensor;
 
